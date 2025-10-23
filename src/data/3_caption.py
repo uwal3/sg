@@ -1,11 +1,15 @@
+from template import CAPTIONING_PROMPT
+
 import pandas as pd
 from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 from PIL import Image
 import torch
+from tqdm import tqdm
 
 
-batch_size = 8
-model_id = "Qwen/Qwen3-VL-2B-Instruct"
+batch_size = 16
+model_id = "Qwen/Qwen3-VL-8B-Instruct"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 meta = pd.read_csv("data/meta.csv")
@@ -15,9 +19,9 @@ processor = AutoProcessor.from_pretrained("Qwen/Qwen3-VL-8B-Instruct")
 model = Qwen3VLForConditionalGeneration.from_pretrained(
     model_id,
     dtype="auto",
-    device_map="auto",
-    # attn_implementation="flash_attention_2",
+    attn_implementation="flash_attention_2",
 )
+model.to(device)
 
 
 def make_chat(front: Image.Image, back: Image.Image):
@@ -27,17 +31,14 @@ def make_chat(front: Image.Image, back: Image.Image):
             "content": [
                 {"type": "image", "image": front},
                 {"type": "image", "image": back},
-                {
-                    "type": "text",
-                    "text": "Given the front and back images of this Minecraft skin, provide a detailed description of its appearance. Your description should include colors, patterns, and any notable features present on the skin. Use references to common themes, styles or characters if applicable.",
-                },
+                {"type": "text", "text": CAPTIONING_PROMPT},
             ],
         }
     ]
     return messages
 
 
-for i in range(0, len(meta), batch_size):
+for i in tqdm(range(0, len(meta), batch_size)):
     batch = meta.iloc[i : i + batch_size]
     renders = []
 
@@ -53,6 +54,30 @@ for i in range(0, len(meta), batch_size):
         add_generation_prompt=True,
         return_dict=True,
         return_tensors="pt",
+        padding=True,
+        padding_side="left",
     )
 
-    print(inputs.input_ids.shape)
+    with torch.no_grad():
+        outputs = model.generate(
+            **{k: v.to(model.device) for k, v in inputs.items()},
+            max_new_tokens=256,
+            temperature=0.1,
+            top_p=0.9,
+            repetition_penalty=1.1,
+        )
+
+        generated_ids_trimmed = [
+            out_ids[len(in_ids) :]
+            for in_ids, out_ids in zip(inputs["input_ids"], outputs)
+        ]
+        captions = processor.batch_decode(
+            generated_ids_trimmed,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )
+
+    for (idx, _), caption in zip(batch.iterrows(), captions):
+        meta.at[idx, "caption"] = caption
+
+meta.to_csv("data/meta.csv", index=False)

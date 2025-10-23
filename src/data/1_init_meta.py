@@ -6,22 +6,19 @@ from tqdm import tqdm
 
 meta = pd.DataFrame(columns=["id", "path"])
 
-for file in tqdm(os.listdir("data/skins")):
+for file in tqdm(os.listdir("data/skins/good")):
     if file.endswith(".png"):
-        id = uuid.uuid4()
-        new_name = f"{id}.png"
-        os.rename(
-            os.path.join("data/skins", file), os.path.join("data/skins", new_name)
-        )
+        id = file[:-4]
+
         meta = pd.concat(
             [
                 meta,
                 pd.DataFrame(
-                    {"id": [id], "path": [os.path.join("data/skins", new_name)]}
+                    {"id": [id], "path": [os.path.join("data/skins/good", file)]}
                 ),
             ],
             ignore_index=True,
         )
 
-meta = meta.sample(50000)
+meta = meta.sample(64000, random_state=52)
 meta.to_csv("data/meta.csv", index=False)

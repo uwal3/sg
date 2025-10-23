@@ -1,0 +1,6 @@
+transformers
+diffusers
+MinePI
+flash-attn
+accelerate
+h5py
