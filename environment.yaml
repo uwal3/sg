@@ -8,4 +8,6 @@ dependencies:
   - pytorch
   - torchvision
   - accelerate
+  - h5py
+  - scikit-learn
 prefix: /Users/nikita/miniconda3/envs/sg
